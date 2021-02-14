@@ -8,6 +8,12 @@ It runs in [a docker image](https://github.com/xu-cheng/latex-docker) with a ful
 
 If you want to run arbitrary commands in a TeXLive environment, use [texlive-action](https://github.com/xu-cheng/texlive-action) instead.
 
+## Version
+This Fork provides three versions
+- `v2` - current version from xu-cheng/latex-action
+- `full` - full [TeXLive](https://www.tug.org/texlive/) environment
+- `this` - thin [TeXLive](https://www.tug.org/texlive/) environment
+
 ## Inputs
 
 * `root_file`
