@@ -2,6 +2,8 @@
 
 set -e
 
+shopt -s extglob
+
 info() {
   echo -e "\033[1;34m$1\033[0m"
 }
@@ -16,19 +18,41 @@ error() {
 }
 
 root_file="${1}"
-working_directory="${2}"
-compiler="${3}"
-args="${4}"
-extra_packages="${5}"
-extra_system_packages="${6}"
-pre_compile="${7}"
-post_compile="${8}"
-latexmk_shell_escape="${9}"
-latexmk_use_lualatex="${10}"
-latexmk_use_xelatex="${11}"
+glob_root_file="${2}"
+working_directory="${3}"
+work_in_root_file_dir="${4}"
+compiler="${5}"
+args="${6}"
+extra_packages="${7}"
+extra_system_packages="${8}"
+extra_fonts="${9}"
+pre_compile="${10}"
+post_compile="${11}"
+latexmk_shell_escape="${12}"
+latexmk_use_lualatex="${13}"
+latexmk_use_xelatex="${14}"
 
 if [[ -z "$root_file" ]]; then
   error "Input 'root_file' is missing."
+fi
+
+readarray -t root_file <<< "$root_file"
+
+if [[ -n "$working_directory" ]]; then
+  if [[ ! -d "$working_directory" ]]; then
+    mkdir -p "$working_directory"
+  fi
+  cd "$working_directory"
+fi
+
+if [[ -n "$glob_root_file" ]]; then
+  expanded_root_file=()
+  for pattern in "${root_file[@]}"; do
+    expanded="$(compgen -G "$pattern" || echo "$pattern")"
+    readarray -t files <<< "$expanded"
+    expanded_root_file+=("${files[@]}")
+  done
+  root_file=("${expanded_root_file[@]}")
 fi
 
 if [[ -z "$compiler" && -z "$args" ]]; then
@@ -89,15 +113,32 @@ if [[ -n "$extra_system_packages" ]]; then
   done
 fi
 
-if [[ -n "$extra_packages" ]]; then
-  warn "Input 'extra_packages' is deprecated. We now build LaTeX document with full TeXLive installed."
+if [[ -n "$extra_fonts" ]]; then
+  readarray -t extra_fonts <<< "$extra_fonts"
+  expanded_extra_fonts=()
+  for pattern in "${extra_fonts[@]}"; do
+    expanded="$(compgen -G "$pattern" || echo "$pattern")"
+    readarray -t files <<< "$expanded"
+    expanded_extra_fonts+=("${files[@]}")
+  done
+  extra_fonts=("${expanded_extra_fonts[@]}")
+
+  mkdir -p "$HOME/.local/share/fonts/"
+
+  for f in "${extra_fonts[@]}"; do
+    if [[ -z "$f" ]]; then
+      continue
+    fi
+
+    info "Install font $f"
+    cp -r "$f" "$HOME/.local/share/fonts/"
+  done
+
+  fc-cache -fv
 fi
 
-if [[ -n "$working_directory" ]]; then
-  if [[ ! -d "$working_directory" ]]; then
-    mkdir -p "$working_directory"
-  fi
-  cd "$working_directory"
+if [[ -n "$extra_packages" ]]; then
+  warn "Input 'extra_packages' is deprecated. We now build LaTeX document with full TeXLive installed."
 fi
 
 if [[ -n "$pre_compile" ]]; then
@@ -105,19 +146,30 @@ if [[ -n "$pre_compile" ]]; then
   eval "$pre_compile"
 fi
 
-while IFS= read -r f; do
+for f in "${root_file[@]}"; do
   if [[ -z "$f" ]]; then
     continue
   fi
 
-  info "Compile $f"
+  if [[ -n "$work_in_root_file_dir" ]]; then
+    pushd "$(dirname "$f")" >/dev/null
+    f="$(basename "$f")"
+    info "Compile $f in $PWD"
+  else
+    info "Compile $f"
+  fi
 
   if [[ ! -f "$f" ]]; then
     error "File '$f' cannot be found from the directory '$PWD'."
   fi
 
   "$compiler" "${args[@]}" "$f"
-done <<< "$root_file"
+
+  if [[ -n "$work_in_root_file_dir" ]]; then
+    popd >/dev/null
+  fi
+done
+
 
 if [[ -n "$post_compile" ]]; then
   info "Run post compile commands"
